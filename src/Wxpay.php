@@ -655,7 +655,7 @@ class Wxpay {
 		return $result;
 	}
 
-	//H5测试支付
+	//H5测试支付321312
 	//    public function pay(){
 	//        $url = 'https://api.mch.weixin.qq.com/v3/pay/transactions/h5';
 	//        $body = [
