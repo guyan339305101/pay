@@ -1,9 +1,10 @@
 <?php
 
-namespace Guyan001\phpWxpay;
+namespace Guyanpay\phpWxpay;
 use think\Model;
 
 class Wxpay extends Model {
+
 	/**
 	 * Small fish
 	 * 项目注释-
