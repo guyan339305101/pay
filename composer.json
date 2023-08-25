@@ -4,12 +4,15 @@
     "homepage": "https://github.com/guyan339305101/pay",
     "keywords": [
         "php",
-        "jwt"
+        "V3",
+        "pay",
+        "php8",
+        "wechat",
     ],
     "type": "library",
     "authors": [
         {
-            "name": "Neuman Vong",
+            "name": "yan",
             "email": "339305101@qq.com",
             "role": "Developer"
         }
