@@ -7,7 +7,7 @@
         "V3",
         "pay",
         "php8",
-        "wechat",
+        "wechat"
     ],
     "type": "library",
     "authors": [
