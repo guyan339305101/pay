@@ -8,7 +8,7 @@
   $arr['notify_url'] = '回掉地址';
   $arr['openid'] = 'okjqy5KP6RWj2PRfUV5ZYDqXvoTE';
   $res = $TestPackage->getfpay($arr);
-  //v3服务商支付模式
+  //v3服务商支付模式...
 
 
 
