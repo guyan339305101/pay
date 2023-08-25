@@ -1,3 +1,5 @@
+  
+  安装命令composer require "guyanpay/php-wxpay @dev"
   需要配合数据库使用
   //v3服务商支付模式
   $data = Db::name('merchant')->where('is_type', 1)->find();
