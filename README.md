@@ -43,3 +43,25 @@
   $TestPackage = new \Guyanpay\phpWxpay\Wxpay($data);
   $res=$TestPackage->getOrderrefunds($out_refund_no, $sub_mchid = 0)
  // 服务商查询单笔退款API
+
+
+
+//注意 
+common.php 需要加入 
+use think\exception\HttpResponseException;
+use think\Response;
+function apijson($code, $res = [], $message = '') {
+  $message = $message == '' ? '操作成功' : $message;
+  $result = [
+    "code" => $code,
+    "msg" => $message,
+    "message" => $message,
+    "data" => $res,
+  ];
+  $response = Response::create($result, 'json')->code(200);
+  throw new HttpResponseException($response);
+}
+
+
+
+
