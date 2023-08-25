@@ -71,6 +71,7 @@ class Wxpay {
 	//money订单金额
 	//time_expire超时时间
 	function getfpay($arr = []) {
+		$arr['time_expire'] = $arr['time_expire'] ?? 300;
 		$url = 'https://api.mch.weixin.qq.com/v3/pay/partner/transactions/jsapi';
 		$body = [
 			'sp_appid' => $this->sp_appid,
@@ -137,6 +138,7 @@ class Wxpay {
 	public function jsapi($arr) {
 
 		$url = "https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi";
+		$arr['time_expire'] = $arr['time_expire'] ?? 300;
 		$body = [
 			'appid' => $this->sub_appid,
 			'mchid' => $this->sub_mchid,
