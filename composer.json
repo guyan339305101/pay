@@ -1,5 +1,3 @@
-
-// composer require "guyanpay/php-wxpay @dev"
 {
     "name": "guyanpay/php-wxpay",
     "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
