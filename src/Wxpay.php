@@ -91,7 +91,7 @@ class Wxpay {
 			'payer' => [
 				'sub_openid' => $arr['openid'],
 			],
-			'time_expire' => $arr['time_expire'] ?? date("c", strtotime(date('Y-m-d H:i:s', (time() + 300)))),
+			'time_expire' => date("c", strtotime(date('Y-m-d H:i:s', (time() + $arr['time_expire'])))),
 		];
 		$headers = $this->sign('POST', $url, json_encode($body));
 		$res = $this->curl_post($url, json_encode($body), $headers);
@@ -143,7 +143,7 @@ class Wxpay {
 			'description' => $arr['gooddesc'] ?? '商品',
 			'out_trade_no' => $arr['out_trade_no'],
 			'notify_url' => $arr['notify_url'],
-			'time_expire' => $arr['time_expire'] ?? date("c", strtotime(date('Y-m-d H:i:s', (time() + 300)))),
+			'time_expire' => date("c", strtotime(date('Y-m-d H:i:s', (time() + $arr['time_expire'])))),
 			'amount' => [
 				'total' => $arr['money'] * 100,
 				'currency' => 'CNY',
