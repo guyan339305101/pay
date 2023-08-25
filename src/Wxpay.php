@@ -7,7 +7,6 @@ use think\Model;
 class Wxpay {
 	const KEY_LENGTH_BYTE = 32;
 	const AUTH_TAG_LENGTH_BYTE = 16;
-	protected $name = 'admin';
 	public $Db;
 	public $pager;
 	public $M;
