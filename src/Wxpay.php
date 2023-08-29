@@ -47,7 +47,14 @@ class Wxpay {
 		$this->apiclient_cert = $this->path . '/apiclient_cert.pem';
 		$this->apiclient_key = $this->path . '/apiclient_key.pem'; //
 		$this->publicKeyPath = $this->path . '/public_key.pem'; //
+		// p($this->apiclient_key_content);
 	}
+	// protected $payApi = [
+	// 	'jsapi' => 'https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi', //APP支付
+	// 	'app' => 'https://api.mch.weixin.qq.com/v3/pay/transactions/app', //APP支付
+	// 	'h5' => 'https://api.mch.weixin.qq.com/v3/pay/transactions/h5', //H5支付
+	// ]; //支付接口列表
+	protected $queryApi = 'https://api.mch.weixin.qq.com/v3/pay/transactions/id/{transaction_id}'; //查询订单接口
 	protected $refundApi = 'https://api.mch.weixin.qq.com/v3/refund/domestic/refunds'; //退单接口
 	protected $refundNotify = '******'; //退单回调自定义
 	protected $config = [];
@@ -156,13 +163,16 @@ class Wxpay {
 		}
 		if (isset($res['code']) && $res['code'] == "PARAM_ERROR") {
 			apijson(0, $res, $res['message']);
+
 		}
 		if (isset($res['code']) && $res['code'] == "APPID_MCHID_NOT_MATCH") {
 			apijson(0, $res, $res['message']);
 		}
 		if (isset($res['code']) && $res['code'] == "SIGN_ERROR") {
 			apijson(0, $res, $res['message']);
+
 		}
+
 		$time = (string) time();
 		$str = $this->getRandomStr(32);
 		$prepay = "prepay_id=" . $res["prepay_id"]; //数据包
@@ -170,6 +180,7 @@ class Wxpay {
 			$time . "\n" .
 			$str . "\n" .
 			$prepay . "\n";
+
 		openssl_sign($message1, $signature, $this->getMchKey(), "sha256WithRSAEncryption");
 		$sign1 = base64_encode($signature);
 		// p($sign1);exit();
@@ -180,6 +191,7 @@ class Wxpay {
 		$data['package'] = "prepay_id=" . $res["prepay_id"]; //数据包
 		$data['paySign'] = $sign1;
 		$data['mch_id'] = $this->sp_mchid;
+
 		return $data;
 
 	}
@@ -205,8 +217,11 @@ class Wxpay {
 			],
 		];
 		$headers = $this->sign('POST', $this->refundApi, json_encode($body), $mchid);
+		// p($this->refundApi);
+		// p($headers);exit();
 		return $this->curl_post($this->refundApi, json_encode($body), $headers);
 	}
+
 	//服务商退款
 	public function shoprefund($mchid, $out_trade_no, $url, $getOrderNo, $price, $yprice = '') {
 		if (empty($yprice)) {
@@ -520,6 +535,27 @@ class Wxpay {
 		$wechatpay_nonce = $http_data['wechatpay-nonce'];
 		$wechatpay_signature = $http_data['wechatpay-signature'];
 		$signature = base64_decode($wechatpay_signature);
+
+		$pub_key = $this->getpublicKeyPath();
+		$body = str_replace('\\', '', $body);
+		$message =
+			$wechatpay_timestamp . "\n" .
+			$wechatpay_nonce . "\n" .
+			$body . "\n";
+		$res = openssl_verify($message, $signature, $pub_key, OPENSSL_ALGO_SHA256);
+
+		if ($res == 1) {
+			return true;
+		}
+
+		return false;
+	}
+	/**
+	 * Small fish
+	 * 项目注释- 获取平台证书
+	 */
+	public function getpublicKeyPath() {
+
 		if (!file_exists($this->publicKeyPath)) {
 			$plat = $this->getCert();
 			$associatedData = $plat['data'][0]['encrypt_certificate']['associated_data'];
@@ -534,18 +570,8 @@ class Wxpay {
 		} else {
 			$pub_key = file_get_contents($this->publicKeyPath);
 		}
-		$body = str_replace('\\', '', $body);
-		$message =
-			$wechatpay_timestamp . "\n" .
-			$wechatpay_nonce . "\n" .
-			$body . "\n";
-		$res = openssl_verify($message, $signature, $pub_key, OPENSSL_ALGO_SHA256);
+		return $pub_key;
 
-		if ($res == 1) {
-			return true;
-		}
-
-		return false;
 	}
 
 	/**
@@ -638,6 +664,41 @@ class Wxpay {
 		return $result;
 	}
 
+	/**
+	 * 敏感信息加密
+	 * @param $str
+	 * @return string
+	 * @throws Exception
+	 */
+	private function getEncrypt($str) {
+		//$str是待加密字符串
+		$public_key = $this->getpublicKeyPath();
+		$encrypted = '';
+		if (openssl_public_encrypt($str, $encrypted, $public_key, OPENSSL_PKCS1_OAEP_PADDING)) {
+			//base64编码
+			$sign = base64_encode($encrypted);
+		} else {
+			throw new Exception('加密失败');
+		}
+		return $sign;
+	}
+	/**
+	 * 敏感信息解密
+	 * @param $str
+	 * @return string
+	 * @throws Exception
+	 */
+	public static function getDecrypt($str) {
+		$private_key = $this->getpublicKeyPath();
+		$encrypted = '';
+		if (openssl_private_decrypt($str, $encrypted, $private_key, OPENSSL_PKCS1_OAEP_PADDING)) {
+			//base64编码
+			$sign = $encrypted;
+		} else {
+			throw new Exception('解密失败');
+		}
+		return $sign;
+	}
 	//H5测试支付321312
 	//    public function pay(){
 	//        $url = 'https://api.mch.weixin.qq.com/v3/pay/transactions/h5';
