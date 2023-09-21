@@ -31,22 +31,27 @@ class Wxpay {
 	public $apiclient_cert_content;
 	public $apiclient_key_content;
 	protected $autoCheckFields = false;
-	public function __construct($data) {
+	public function __construct($data = []) {
+		if (!empty($data)) {
+			$this->id = $data['id'] ?? 0;
+			$this->sp_appid = $data['sp_appid'] ?? 0;
+			$this->sp_mchid = $data['sp_mchid'] ?? 0;
+			$this->sub_appid = $data['sub_appid'] ?? 0;
+			$this->sub_mchid = $data['sub_mchid'] ?? 0;
+			$this->secret = $data['sub_secret'] ?? 0;
+			$this->key = $data['keyd'] ?? 0;
+			$this->serial_no = $data['serial_no'] ?? 0;
+			$this->apiclient_cert_content = $data['apiclient_cert'] ?? 0;
+			$this->apiclient_key_content = $data['apiclient_key'] ?? 0;
+			$this->publicKeyPath_content = $data['public_key'];
+
+			$this->path = $this->sub_mchid;
+			$this->apiclient_cert = $this->path . '/apiclient_cert.pem';
+			$this->apiclient_key = $this->path . '/apiclient_key.pem'; //
+			$this->publicKeyPath = $this->path . '/public_key.pem'; //
+		}
 		// $data = Db::name('merchant')->where('is_type', 1)->find();
-		$this->id = $data['id'];
-		$this->sp_appid = $data['sp_appid'];
-		$this->sp_mchid = $data['sp_mchid'];
-		$this->sub_appid = $data['sub_appid'];
-		$this->sub_mchid = $data['sub_mchid'];
-		$this->secret = $data['sub_secret'];
-		$this->key = $data['keyd'];
-		$this->serial_no = $data['serial_no'];
-		$this->apiclient_cert_content = $data['apiclient_cert'];
-		$this->apiclient_key_content = $data['apiclient_key'];
-		$this->path = app()->getRootPath() . 'vendor/guyanpay/php-wxpay/src/ert/' . $this->id . $this->sub_mchid;
-		$this->apiclient_cert = $this->path . '/apiclient_cert.pem';
-		$this->apiclient_key = $this->path . '/apiclient_key.pem'; //
-		$this->publicKeyPath = $this->path . '/public_key.pem'; //
+
 		// p($this->apiclient_key_content);
 	}
 	// protected $payApi = [
@@ -94,6 +99,7 @@ class Wxpay {
 			],
 			'time_expire' => date("c", strtotime(date('Y-m-d H:i:s', (time() + $arr['time_expire'])))),
 		];
+
 		$headers = $this->sign('POST', $url, json_encode($body));
 		$res = $this->curl_post($url, json_encode($body), $headers);
 		$res = json_decode($res, true);
@@ -141,7 +147,7 @@ class Wxpay {
 		$arr['time_expire'] = $arr['time_expire'] ?? 300;
 		$body = [
 			'appid' => $this->sub_appid,
-			'mchid' => $this->sub_mchid,
+			'mchid' => (string) $this->sub_mchid,
 			'description' => $arr['gooddesc'] ?? '商品',
 			'out_trade_no' => $arr['out_trade_no'],
 			'notify_url' => $arr['notify_url'],
@@ -155,8 +161,11 @@ class Wxpay {
 
 			],
 		];
-		$headers = $this->sign('POST', $url, json_encode($body));
+		// exit();
+		$headers = $this->signjsapi('POST', $url, json_encode($body));
+
 		$res = $this->curl_post($url, json_encode($body), $headers);
+
 		$res = json_decode($res, true);
 		if (isset($res['code']) && $res['code'] == "NO_AUTH") {
 			apijson(0, $res, '升级中');
@@ -176,7 +185,7 @@ class Wxpay {
 		$time = (string) time();
 		$str = $this->getRandomStr(32);
 		$prepay = "prepay_id=" . $res["prepay_id"]; //数据包
-		$message1 = $this->appid . "\n" .
+		$message1 = $this->sub_appid . "\n" .
 			$time . "\n" .
 			$str . "\n" .
 			$prepay . "\n";
@@ -190,10 +199,49 @@ class Wxpay {
 		$data['signType'] = 'MD5';
 		$data['package'] = "prepay_id=" . $res["prepay_id"]; //数据包
 		$data['paySign'] = $sign1;
-		$data['mch_id'] = $this->sp_mchid;
+		$data['mch_id'] = $this->sub_mchid;
 
 		return $data;
 
+	}
+
+	/**
+	 * 签名
+	 * @param string $http_method    请求方式GET|POST
+	 * @param string $url            url
+	 * @param string $body           报文主体
+	 * @return array
+	 */
+	public function signjsapi($http_method = 'POST', $url = '', $body = '', $mchid = 0) {
+		$mch_private_key = $this->getMchKey(); //私钥
+		// p($mch_private_key);exit();
+		// exit();
+		$timestamp = time(); //时间戳
+		$nonce = $this->getRandomStr(32); //随机串
+		$url_parts = parse_url($url);
+		$canonical_url = ($url_parts['path'] . (!empty($url_parts['query']) ? "?${url_parts['query']}" : ""));
+		//构造签名串
+		$message = $http_method . "\n" .
+			$canonical_url . "\n" .
+			$timestamp . "\n" .
+			$nonce . "\n" .
+			$body . "\n"; //报文主体
+		//计算签名值
+		// p($body);exit();
+		openssl_sign($message, $raw_sign, $mch_private_key, 'sha256WithRSAEncryption');
+		$sign = base64_encode($raw_sign);
+		//设置HTTP头
+		$token = sprintf('WECHATPAY2-SHA256-RSA2048 mchid="%s",nonce_str="%s",timestamp="%d",serial_no="%s",signature="%s"',
+			$this->sub_mchid, $nonce, $timestamp, $this->serial_no, $sign);
+		// p($token);exit();
+		$headers = [
+			'Accept: application/json',
+			'User-Agent: */*',
+			'Content-Type: application/json; charset=utf-8',
+			'Authorization: ' . $token,
+		];
+		// p($headers);exit();
+		return $headers;
 	}
 
 	/**
@@ -240,8 +288,7 @@ class Wxpay {
 			],
 		];
 		$headers = $this->sign('POST', $this->refundApi, json_encode($body), $mchid);
-		// p($this->refundApi);
-		// p($headers);exit();
+
 		$e = $this->curl_post($this->refundApi, json_encode($body), $headers);
 		return json_decode($e, true);
 	}
@@ -298,7 +345,8 @@ class Wxpay {
 	 * @return array
 	 */
 	public function sign($http_method = 'POST', $url = '', $body = '', $mchid = 0) {
-		$mch_private_key = $this->getMchKey($mchid); //私钥
+		$mch_private_key = $this->getMchKey(); //私钥
+		// p($mch_private_key);exit();
 		// exit();
 		$timestamp = time(); //时间戳
 		$nonce = $this->getRandomStr(32); //随机串
@@ -311,11 +359,13 @@ class Wxpay {
 			$nonce . "\n" .
 			$body . "\n"; //报文主体
 		//计算签名值
+		// p($body);exit();
 		openssl_sign($message, $raw_sign, $mch_private_key, 'sha256WithRSAEncryption');
 		$sign = base64_encode($raw_sign);
 		//设置HTTP头
 		$token = sprintf('WECHATPAY2-SHA256-RSA2048 mchid="%s",nonce_str="%s",timestamp="%d",serial_no="%s",signature="%s"',
 			$this->sp_mchid, $nonce, $timestamp, $this->serial_no, $sign);
+		// p($token);exit();
 		$headers = [
 			'Accept: application/json',
 			'User-Agent: */*',
@@ -329,6 +379,7 @@ class Wxpay {
 	//私钥
 	public function getMchKey($mchid = 0) {
 		// exit();
+		// p($this->apiclient_key_content);exit();
 		return openssl_get_privatekey($this->apiclient_key_content);
 	}
 
@@ -503,18 +554,28 @@ class Wxpay {
 
 	//支付回掉解密数据
 	public function WxToString($associatedData, $nonceStr, $ciphertext) {
+
 		$ciphertext = \base64_decode($ciphertext);
 		if (strlen($ciphertext) <= self::AUTH_TAG_LENGTH_BYTE) {
+
 			return false;
 		}
 		// ext-sodium (default installed on >= PHP 7.2)
 		if (function_exists('\sodium_crypto_aead_aes256gcm_is_available') &&
 			\sodium_crypto_aead_aes256gcm_is_available()) {
-			return \sodium_crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
+
+			// p($associatedData);
+			// p($nonceStr);
+			// p($ciphertext);
+			$r = \sodium_crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
+			// p($this->key);
+			// p($r);exit();
+			return $r;
 		}
 		// ext-libsodium (need install libsodium-php 1.x via pecl)
 		if (function_exists('\Sodium\crypto_aead_aes256gcm_is_available') &&
 			\Sodium\crypto_aead_aes256gcm_is_available()) {
+
 			return \Sodium\crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
 		}
 		// openssl (PHP >= 7.1 support AEAD)
@@ -530,12 +591,12 @@ class Wxpay {
 
 	// 支付回掉	//支付回掉签名验证
 	function verifySigns($http_data) {
+
 		$body = $http_data['body'];
 		$wechatpay_timestamp = $http_data['wechatpay-timestamp'];
 		$wechatpay_nonce = $http_data['wechatpay-nonce'];
 		$wechatpay_signature = $http_data['wechatpay-signature'];
 		$signature = base64_decode($wechatpay_signature);
-
 		$pub_key = $this->getpublicKeyPath();
 		$body = str_replace('\\', '', $body);
 		$message =
@@ -543,7 +604,7 @@ class Wxpay {
 			$wechatpay_nonce . "\n" .
 			$body . "\n";
 		$res = openssl_verify($message, $signature, $pub_key, OPENSSL_ALGO_SHA256);
-
+		// p($res);exit();
 		if ($res == 1) {
 			return true;
 		}
@@ -556,20 +617,26 @@ class Wxpay {
 	 */
 	public function getpublicKeyPath() {
 
-		if (!file_exists($this->publicKeyPath)) {
+		if (empty($this->publicKeyPath_content)) {
+
 			$plat = $this->getCert();
+			// p($plat);
 			$associatedData = $plat['data'][0]['encrypt_certificate']['associated_data'];
 			$nonceStr = $plat['data'][0]['encrypt_certificate']['nonce'];
 			$ciphertext = $plat['data'][0]['encrypt_certificate']['ciphertext'];
 			$plat_cert_decrtpt = $this->WxToString($associatedData, $nonceStr, $ciphertext);
+			// p($plat_cert_decrtpt);exit();
 			$pub_key = trim($plat_cert_decrtpt);
-			$sf = $this->publicKeyPath;
-			$fp = fopen($sf, "w"); //写方式打开文件
-			fwrite($fp, $pub_key); //存入内容
-			fclose($fp); //关闭文件
+			Db::name('merchant')->where('id', $this->id)->update([
+				'public_key' => $pub_key,
+			]);
+			return $pub_key;
 		} else {
-			$pub_key = file_get_contents($this->publicKeyPath);
+			// p(1);exit();
+			// p($this->publicKeyPath);exit();
+			$pub_key = $this->publicKeyPath_content;
 		}
+		// p($pub_key);exit();
 		return $pub_key;
 
 	}
@@ -590,6 +657,7 @@ class Wxpay {
 		$header = $this->getHeader($nonce_str, $this->getSignature($signBody));
 		$res = $this->curlRequest($url, 'GET', '', $header);
 		$res = json_decode($res, true);
+		// p($res);exit();
 		return $res;
 
 	}
