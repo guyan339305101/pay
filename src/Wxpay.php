@@ -25,6 +25,7 @@ class Wxpay {
 	public $sp_appid;
 	public $sp_mchid;
 	public $sub_appid;
+	public $sub_secret;
 	public $sub_mchid;
 	public $id;
 	public $path;
@@ -33,7 +34,10 @@ class Wxpay {
 	protected $autoCheckFields = false;
 	public function __construct($data = []) {
 		if (!empty($data)) {
+			// p($data);exit();
 			$this->id = $data['id'] ?? 0;
+
+			$this->sub_secret = $data['sub_secret'] ?? 0;
 			$this->sp_appid = $data['sp_appid'] ?? 0;
 			$this->sp_mchid = $data['sp_mchid'] ?? 0;
 			$this->sub_appid = $data['sub_appid'] ?? 0;
@@ -43,9 +47,7 @@ class Wxpay {
 			$this->serial_no = $data['serial_no'] ?? 0;
 			$this->apiclient_cert_content = $data['apiclient_cert'] ?? 0;
 			$this->apiclient_key_content = $data['apiclient_key'] ?? 0;
-			$this->publicKeyPath_content = $data['public_key'];
-
-			$this->path = $this->sub_mchid;
+			$this->path = app()->getRootPath() . 'vendor/guyanpay/php-wxpay/src/ert/' . $this->id . $this->sub_mchid;
 			$this->apiclient_cert = $this->path . '/apiclient_cert.pem';
 			$this->apiclient_key = $this->path . '/apiclient_key.pem'; //
 			$this->publicKeyPath = $this->path . '/public_key.pem'; //
@@ -99,7 +101,6 @@ class Wxpay {
 			],
 			'time_expire' => date("c", strtotime(date('Y-m-d H:i:s', (time() + $arr['time_expire'])))),
 		];
-
 		$headers = $this->sign('POST', $url, json_encode($body));
 		$res = $this->curl_post($url, json_encode($body), $headers);
 		$res = json_decode($res, true);
@@ -150,6 +151,7 @@ class Wxpay {
 			'mchid' => (string) $this->sub_mchid,
 			'description' => $arr['gooddesc'] ?? '商品',
 			'out_trade_no' => $arr['out_trade_no'],
+			'attach' => $arr['attach'] ?? 1,
 			'notify_url' => $arr['notify_url'],
 			'time_expire' => date("c", strtotime(date('Y-m-d H:i:s', (time() + $arr['time_expire'])))),
 			'amount' => [
@@ -158,14 +160,10 @@ class Wxpay {
 			],
 			'payer' => [
 				'openid' => $arr['openid'],
-
 			],
 		];
-		// exit();
-		$headers = $this->signjsapi('POST', $url, json_encode($body));
-
+		$headers = $this->sign('POST', $url, json_encode($body));
 		$res = $this->curl_post($url, json_encode($body), $headers);
-
 		$res = json_decode($res, true);
 		if (isset($res['code']) && $res['code'] == "NO_AUTH") {
 			apijson(0, $res, '升级中');
@@ -190,6 +188,7 @@ class Wxpay {
 			$str . "\n" .
 			$prepay . "\n";
 
+		// p($message1);exit();
 		openssl_sign($message1, $signature, $this->getMchKey(), "sha256WithRSAEncryption");
 		$sign1 = base64_encode($signature);
 		// p($sign1);exit();
@@ -199,49 +198,10 @@ class Wxpay {
 		$data['signType'] = 'MD5';
 		$data['package'] = "prepay_id=" . $res["prepay_id"]; //数据包
 		$data['paySign'] = $sign1;
-		$data['mch_id'] = $this->sub_mchid;
+		$data['mch_id'] = $this->sp_mchid;
 
 		return $data;
 
-	}
-
-	/**
-	 * 签名
-	 * @param string $http_method    请求方式GET|POST
-	 * @param string $url            url
-	 * @param string $body           报文主体
-	 * @return array
-	 */
-	public function signjsapi($http_method = 'POST', $url = '', $body = '', $mchid = 0) {
-		$mch_private_key = $this->getMchKey(); //私钥
-		// p($mch_private_key);exit();
-		// exit();
-		$timestamp = time(); //时间戳
-		$nonce = $this->getRandomStr(32); //随机串
-		$url_parts = parse_url($url);
-		$canonical_url = ($url_parts['path'] . (!empty($url_parts['query']) ? "?${url_parts['query']}" : ""));
-		//构造签名串
-		$message = $http_method . "\n" .
-			$canonical_url . "\n" .
-			$timestamp . "\n" .
-			$nonce . "\n" .
-			$body . "\n"; //报文主体
-		//计算签名值
-		// p($body);exit();
-		openssl_sign($message, $raw_sign, $mch_private_key, 'sha256WithRSAEncryption');
-		$sign = base64_encode($raw_sign);
-		//设置HTTP头
-		$token = sprintf('WECHATPAY2-SHA256-RSA2048 mchid="%s",nonce_str="%s",timestamp="%d",serial_no="%s",signature="%s"',
-			$this->sub_mchid, $nonce, $timestamp, $this->serial_no, $sign);
-		// p($token);exit();
-		$headers = [
-			'Accept: application/json',
-			'User-Agent: */*',
-			'Content-Type: application/json; charset=utf-8',
-			'Authorization: ' . $token,
-		];
-		// p($headers);exit();
-		return $headers;
 	}
 
 	/**
@@ -271,13 +231,13 @@ class Wxpay {
 	}
 
 	//服务商退款
-	public function shoprefund($mchid, $out_trade_no, $url, $getOrderNo, $price, $yprice = '') {
+	public function shoprefund($mchid, $transaction_id, $url, $getOrderNo, $price, $yprice = '') {
 		if (empty($yprice)) {
 			$yprice = $price;
 		}
 		$body = [
-			'sub_mchid' => $mchid,
-			'out_trade_no' => $out_trade_no, //平台订单号
+			'sub_mchid' => (string) $mchid,
+			'transaction_id' => $transaction_id, //平台订单号
 			'out_refund_no' => $getOrderNo, //系统退款单号
 			'reason' => '退款', //退款原因
 			'notify_url' => $url, //退款回调
@@ -346,8 +306,8 @@ class Wxpay {
 	 */
 	public function sign($http_method = 'POST', $url = '', $body = '', $mchid = 0) {
 		$mch_private_key = $this->getMchKey(); //私钥
-		// p($mch_private_key);exit();
 		// exit();
+		// p($this->sp_mchid);exit();
 		$timestamp = time(); //时间戳
 		$nonce = $this->getRandomStr(32); //随机串
 		$url_parts = parse_url($url);
@@ -359,13 +319,12 @@ class Wxpay {
 			$nonce . "\n" .
 			$body . "\n"; //报文主体
 		//计算签名值
-		// p($body);exit();
+		// p($mch_private_key);exit();
 		openssl_sign($message, $raw_sign, $mch_private_key, 'sha256WithRSAEncryption');
 		$sign = base64_encode($raw_sign);
 		//设置HTTP头
 		$token = sprintf('WECHATPAY2-SHA256-RSA2048 mchid="%s",nonce_str="%s",timestamp="%d",serial_no="%s",signature="%s"',
 			$this->sp_mchid, $nonce, $timestamp, $this->serial_no, $sign);
-		// p($token);exit();
 		$headers = [
 			'Accept: application/json',
 			'User-Agent: */*',
@@ -379,7 +338,6 @@ class Wxpay {
 	//私钥
 	public function getMchKey($mchid = 0) {
 		// exit();
-		// p($this->apiclient_key_content);exit();
 		return openssl_get_privatekey($this->apiclient_key_content);
 	}
 
@@ -517,22 +475,58 @@ class Wxpay {
 		}
 		return $reqPar;
 	}
-	/*获取access_token,不能用于获取用户信息的token*/
+	/*获取oken,不能用于获取用户信息的token*/
 	public function getAccessToken() {
 
-		$value = cache('key');
+		// $value = cache('key');
 
 		$res = cache('getAccessToken');
 		if (!empty($res)) {
 			return $res;
 		} else {
-			$url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=$this->appid&secret=$this->secret";
+			$url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=$this->sub_appid&secret=$this->sub_secret";
 			$res = json_decode($this->http_request($url), true);
+			// p($res);
 			cache('getAccessToken', $res['access_token'], 7000);
 			return $res['access_token'];
 
 		}
 
+	}
+
+	/**
+	 * 检验数据的真实性，并且获取解密后的明文.
+	 * @param $encryptedData string 加密的用户数据
+	 * @param $iv string 与用户数据一同返回的初始向量
+	 * @param $data string 解密后的原文
+	 *
+	 * @return int 成功0，失败返回对应的错误码
+	 */
+	public function decryptData($sessionKey, $encryptedData, $iv, &$data) {
+		if (strlen($sessionKey) != 24) {
+
+			return '-41001';
+		}
+		$aesKey = base64_decode($sessionKey);
+
+		if (strlen($iv) != 24) {
+			return '-41002';
+		}
+		$aesIV = base64_decode($iv);
+
+		$aesCipher = base64_decode($encryptedData);
+
+		$result = openssl_decrypt($aesCipher, "AES-128-CBC", $aesKey, 1, $aesIV);
+
+		$dataObj = json_decode($result);
+		if ($dataObj == NULL) {
+			return '-41003';
+		}
+		if ($dataObj->watermark->appid != $this->sub_appid) {
+			return '-41003';
+		}
+		$data = $result;
+		return 0;
 	}
 
 	//HTTP请求（支持HTTP/HTTPS，支持GET/POST）
@@ -554,28 +548,19 @@ class Wxpay {
 
 	//支付回掉解密数据
 	public function WxToString($associatedData, $nonceStr, $ciphertext) {
-
 		$ciphertext = \base64_decode($ciphertext);
 		if (strlen($ciphertext) <= self::AUTH_TAG_LENGTH_BYTE) {
-
 			return false;
 		}
+		// p($this->key);exit();
 		// ext-sodium (default installed on >= PHP 7.2)
 		if (function_exists('\sodium_crypto_aead_aes256gcm_is_available') &&
 			\sodium_crypto_aead_aes256gcm_is_available()) {
-
-			// p($associatedData);
-			// p($nonceStr);
-			// p($ciphertext);
-			$r = \sodium_crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
-			// p($this->key);
-			// p($r);exit();
-			return $r;
+			return \sodium_crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
 		}
 		// ext-libsodium (need install libsodium-php 1.x via pecl)
 		if (function_exists('\Sodium\crypto_aead_aes256gcm_is_available') &&
 			\Sodium\crypto_aead_aes256gcm_is_available()) {
-
 			return \Sodium\crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
 		}
 		// openssl (PHP >= 7.1 support AEAD)
@@ -597,6 +582,7 @@ class Wxpay {
 		$wechatpay_nonce = $http_data['wechatpay-nonce'];
 		$wechatpay_signature = $http_data['wechatpay-signature'];
 		$signature = base64_decode($wechatpay_signature);
+
 		$pub_key = $this->getpublicKeyPath();
 		$body = str_replace('\\', '', $body);
 		$message =
@@ -617,26 +603,28 @@ class Wxpay {
 	 */
 	public function getpublicKeyPath() {
 
-		if (empty($this->publicKeyPath_content)) {
-
+		if (!file_exists($this->publicKeyPath)) {
 			$plat = $this->getCert();
-			// p($plat);
+			// p($plat);exit();
 			$associatedData = $plat['data'][0]['encrypt_certificate']['associated_data'];
 			$nonceStr = $plat['data'][0]['encrypt_certificate']['nonce'];
 			$ciphertext = $plat['data'][0]['encrypt_certificate']['ciphertext'];
 			$plat_cert_decrtpt = $this->WxToString($associatedData, $nonceStr, $ciphertext);
-			// p($plat_cert_decrtpt);exit();
 			$pub_key = trim($plat_cert_decrtpt);
-			Db::name('merchant')->where('id', $this->id)->update([
-				'public_key' => $pub_key,
-			]);
-			return $pub_key;
+			$sf = $this->publicKeyPath;
+
+			$pth = str_replace(basename($sf), '', $sf);
+			// p($pth);exit();
+			if (!file_exists($pth)) {
+				mkdir($pth, 0777, true);
+			}
+			$fp = fopen($sf, "w"); //写方式打开文件
+			fwrite($fp, $pub_key); //存入内容
+			fclose($fp); //关闭文件
 		} else {
-			// p(1);exit();
 			// p($this->publicKeyPath);exit();
-			$pub_key = $this->publicKeyPath_content;
+			$pub_key = file_get_contents($this->publicKeyPath);
 		}
-		// p($pub_key);exit();
 		return $pub_key;
 
 	}
@@ -657,7 +645,6 @@ class Wxpay {
 		$header = $this->getHeader($nonce_str, $this->getSignature($signBody));
 		$res = $this->curlRequest($url, 'GET', '', $header);
 		$res = json_decode($res, true);
-		// p($res);exit();
 		return $res;
 
 	}
