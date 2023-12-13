@@ -26,7 +26,10 @@ class Wxpay {
 	public $sp_mchid;
 	public $sub_appid;
 	public $sub_secret;
+	public $public_key;
 	public $sub_mchid;
+	public $public_key_content;
+
 	public $id;
 	public $path;
 	public $apiclient_cert_content;
@@ -47,7 +50,8 @@ class Wxpay {
 			$this->serial_no = $data['serial_no'] ?? 0;
 			$this->apiclient_cert_content = $data['apiclient_cert'] ?? 0;
 			$this->apiclient_key_content = $data['apiclient_key'] ?? 0;
-			$this->path = app()->getRootPath() . 'vendor/guyanpay/php-wxpay/src/ert/' . $this->id . $this->sub_mchid;
+			$this->public_key_content = $data['public_key'] ?? 0;
+			$this->path = app()->getRootPath() . 'app/model/weixin/' . $this->id . $this->sub_mchid;
 			$this->apiclient_cert = $this->path . '/apiclient_cert.pem';
 			$this->apiclient_key = $this->path . '/apiclient_key.pem'; //
 			$this->publicKeyPath = $this->path . '/public_key.pem'; //
@@ -139,6 +143,35 @@ class Wxpay {
 	}
 
 	/**
+	 * Small fish 小程序支付
+	$user['openid'] = 'oSQih6xkfljRnyvLMgk0lkJpiGEI';
+	if ($user['openid'] == 'oSQih6xkfljRnyvLMgk0lkJpiGEI') {
+	$arr['money'] = '0.01';
+	}
+	$arr['notify_url'] = url('', 'wxurl') . 'home/Pay/weixin';
+	$arr['openid'] = $user['openid']; // 'okjqy5KP6RWj2PRfUV5ZYDqXvoTE';
+	$arr['time_expire'] = 3600;
+	$arr['out_trade_no'] = time() . time();
+	$arr['attach'] = json_encode(1);
+	$arr['profit_sharing'] = true;
+	$data = merchant();
+	$TestPackage = new \Guyanpay\phpWxpay\Wxpay($data);
+	$res = $TestPackage->getpay($arr);
+	 * 项目注释-
+	 */
+	public function getpay($arr) {
+		//走普通支付
+		if (empty($this->sp_mchid) || ($this->sp_mchid == $this->sub_mchid)) {
+			// unset($arr['profit_sharing']);
+			return $this->jsapi($arr);
+		} else {
+			//走服务商支付
+			return $this->getfpay($arr);
+		}
+
+	}
+
+	/**
 	 * Small fish
 	 * 项目注释-直连商户支付
 	 */
@@ -205,6 +238,27 @@ class Wxpay {
 	}
 
 	/**
+	$data = merchant();
+	$TestPackage = new \Guyanpay\phpWxpay\Wxpay($data);
+	$url = url('', 'app_host') . 'home/Pay/refundmoney';
+	// p($url);exit();
+	$res = $TestPackage->refundmoney('1656507094', '4200002041202311248176954442', $url, '1700787614170078761431', '0.01', '0.01');
+	 * Small fish
+	 * 项目注释-退款
+	getOrderNo 自定义的
+	 */
+	public function refundmoney($mchid, $transaction_id, $url, $getOrderNo, $price, $yprice = '') {
+
+		if (empty($this->sp_mchid) || ($this->sp_mchid == $this->sub_mchid)) {
+			// unset($arr['profit_sharing']);
+			return $this->refund($mchid, $transaction_id, $url, $getOrderNo, $price, $yprice);
+		} else {
+			//走服务
+			return $this->shoprefund($mchid, $transaction_id, $url, $getOrderNo, $price, $yprice);
+		}
+
+	}
+	/**
 	 * 直连退款
 	 * @param string $transaction_id  平台订单号
 	 * @return mixed
@@ -227,7 +281,8 @@ class Wxpay {
 		$headers = $this->sign('POST', $this->refundApi, json_encode($body), $mchid);
 		// p($this->refundApi);
 		// p($headers);exit();
-		return $this->curl_post($this->refundApi, json_encode($body), $headers);
+		$rs = $this->curl_post($this->refundApi, json_encode($body), $headers);
+		return json_decode($rs, true);
 	}
 
 	//服务商退款
@@ -235,6 +290,8 @@ class Wxpay {
 		if (empty($yprice)) {
 			$yprice = $price;
 		}
+
+		// p($price);exit();
 		$body = [
 			'sub_mchid' => (string) $mchid,
 			'transaction_id' => $transaction_id, //平台订单号
@@ -306,12 +363,14 @@ class Wxpay {
 	 */
 	public function sign($http_method = 'POST', $url = '', $body = '', $mchid = 0) {
 		$mch_private_key = $this->getMchKey(); //私钥
-		// exit();
+		if (empty($mch_private_key)) {
+			apijson(0, [], '证书错误20902');
+		}
 		// p($this->sp_mchid);exit();
 		$timestamp = time(); //时间戳
 		$nonce = $this->getRandomStr(32); //随机串
 		$url_parts = parse_url($url);
-		$canonical_url = ($url_parts['path'] . (!empty($url_parts['query']) ? "?${url_parts['query']}" : ""));
+		$canonical_url = ($url_parts['path'] . (!empty($url_parts['query']) ? "?" . $url_parts['query'] : ""));
 		//构造签名串
 		$message = $http_method . "\n" .
 			$canonical_url . "\n" .
@@ -338,6 +397,7 @@ class Wxpay {
 	//私钥
 	public function getMchKey($mchid = 0) {
 		// exit();
+		// p($this->apiclient_key_content);
 		return openssl_get_privatekey($this->apiclient_key_content);
 	}
 
@@ -552,17 +612,28 @@ class Wxpay {
 		if (strlen($ciphertext) <= self::AUTH_TAG_LENGTH_BYTE) {
 			return false;
 		}
-		// p($this->key);exit();
+		// p($associatedData);
+		// p($ciphertext);
+		// p($nonceStr);
+		// exit();
 		// ext-sodium (default installed on >= PHP 7.2)
-		if (function_exists('\sodium_crypto_aead_aes256gcm_is_available') &&
-			\sodium_crypto_aead_aes256gcm_is_available()) {
-			return \sodium_crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
+
+		try {
+			if (function_exists('\sodium_crypto_aead_aes256gcm_is_available') &&
+				\sodium_crypto_aead_aes256gcm_is_available()) {
+				// p(1);exit();
+				return \sodium_crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
+			}
+		} catch (\Throwable $th) {
+			if (function_exists('\Sodium\crypto_aead_aes256gcm_is_available') &&
+				\Sodium\crypto_aead_aes256gcm_is_available()) {
+				return \Sodium\crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
+			}
+
 		}
+
 		// ext-libsodium (need install libsodium-php 1.x via pecl)
-		if (function_exists('\Sodium\crypto_aead_aes256gcm_is_available') &&
-			\Sodium\crypto_aead_aes256gcm_is_available()) {
-			return \Sodium\crypto_aead_aes256gcm_decrypt($ciphertext, $associatedData, $nonceStr, $this->key);
-		}
+
 		// openssl (PHP >= 7.1 support AEAD)
 		if (PHP_VERSION_ID >= 70100 && in_array('aes-256-gcm', \openssl_get_cipher_methods())) {
 			$ctext = substr($ciphertext, 0, -self::AUTH_TAG_LENGTH_BYTE);
@@ -576,7 +647,7 @@ class Wxpay {
 
 	// 支付回掉	//支付回掉签名验证
 	function verifySigns($http_data) {
-
+		// p($http_data);exit();
 		$body = $http_data['body'];
 		$wechatpay_timestamp = $http_data['wechatpay-timestamp'];
 		$wechatpay_nonce = $http_data['wechatpay-nonce'];
@@ -603,16 +674,17 @@ class Wxpay {
 	 */
 	public function getpublicKeyPath() {
 
-		if (!file_exists($this->publicKeyPath)) {
+		// p($this->publicKeyPath);
+		if (file_exists($this->publicKeyPath)) {
 			$plat = $this->getCert();
-			// p($plat);exit();
+			// p(0);
 			$associatedData = $plat['data'][0]['encrypt_certificate']['associated_data'];
 			$nonceStr = $plat['data'][0]['encrypt_certificate']['nonce'];
 			$ciphertext = $plat['data'][0]['encrypt_certificate']['ciphertext'];
 			$plat_cert_decrtpt = $this->WxToString($associatedData, $nonceStr, $ciphertext);
 			$pub_key = trim($plat_cert_decrtpt);
 			$sf = $this->publicKeyPath;
-
+			// p($plat);exit();
 			$pth = str_replace(basename($sf), '', $sf);
 			// p($pth);exit();
 			if (!file_exists($pth)) {
